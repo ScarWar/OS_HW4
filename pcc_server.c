@@ -27,10 +27,6 @@ pthread_mutex_t lock;
 
 
 
-int is_printable(char c) {
-    return 32 <= c && c <= 126;
-}
-
 
 void my_signal_handler(int signum, siginfo_t *info, void *ptr) {
     /* Calculate pipe name */
@@ -47,11 +43,37 @@ void my_signal_handler(int signum, siginfo_t *info, void *ptr) {
 
 }
 
+int is_printable(char c) {
+    return 32 <= c && c <= 126;
+}
+
+int counte_printable(char *buf, int length, StatisticsData *sd){
+	int 	i;
+	char 	c;
+	if(buf == NULL || sd == NULL){
+		report_error("Null pointer argument");
+		return -1;
+	} else if(length < 0){
+		report_error("Invalid argumetn");
+		return -1;
+	}
+
+	for(i = 0; i < length; ++i){
+		c = buf[i];
+		if(is_printable(c))
+			sd->char_statistics[int(c)]++
+	}
+	return 0;
+
+}
+
+
 void *start_client_thread(void *arg){
 	long long 	n_bytes_read = 0, n_bytes_recv = 0,
-				LEN, total_read;
+				LEN, total_read, n_printable_bytes,
+				total_sent, n_bytes_sent;
 	int 		i;
-	char 		*buf = NULL;
+	char 		*buf = NULL, print_buf = NULL;
 	/* Create a statistics local data structure. */
 	StatisticsData sd = (StatisticsData*) malloc(sizeof(StatisticsData));
 	if(!sd){
@@ -62,9 +84,9 @@ void *start_client_thread(void *arg){
 
 	/*
 	Read the content from the socket. For every byte:
-	 - Increment the number of bytes read.
-	 - Decide whether it is printable or not.
-	 - If it is, then update the local statistics.
+		- Increment the number of bytes read.
+		- Decide whether it is printable or not.
+		- If it is, then update the local statistics.
 	*/
 	while(total_read < sizeof(int)){
 		n_bytes_recv = recv(sockfd, &LEN + total_sent, sizeof(int) - total_sent, 0);
@@ -77,10 +99,12 @@ void *start_client_thread(void *arg){
 	}
 
 	n_bytes_read = 0;
-	buf = (char *) malloc(BUFFER_SIZE);
-	if(!buf){
-		report_error("Memory allocation failed")
+	buf 		= (char *) malloc(BUFFER_SIZE);
+	if(!buf || !print_buf){
+		report_error("Memory allocation failed");
 		free(sd);
+		free(buf);
+		free(print_buf);
 		pthread_exit(NULL);
 	}
 	while (n_bytes_read < LEN){
@@ -91,11 +115,31 @@ void *start_client_thread(void *arg){
 			free(buf);
 			pthread_exit(NULL);
 		}
+		if(!counte_printable(buf, n_bytes_recv, sd)){
+			// TODO error - handle thread error
+		}
+		n_bytes_read += n_bytes_recv;
 	}
 
  	/* Send the number of the printable bytes back to the client. */
+	n_printable_bytes = 0;
+	for (int i = 0; i < NUM_OF_PRINTABLE_CHAR; ++i)
+		n_printable_bytes += sb->char_statistics[i];
+
+	total_sent = 0;
+	while(total_sent < sizeof(int)){
+		n_bytes_sent = send(sockfd, &n_printable_bytes + total_sent, sizeof(long long) - total_sent, 0);
+		if(n_bytes_sent < 0){
+			report_error("Failed to send to server");
+		    if (close(sockfd) < 0)
+		        report_error("Failed to close sokcet");
+			return -1;
+		}
+		total_sent += n_bytes_sent;
+	}
 
 	/* Close the connection. */
+	close(sockfd);
 
 	/* Acquire (lock) mutex. */
 	if(!pthread_mutex_lock(&lock)){
@@ -108,6 +152,7 @@ void *start_client_thread(void *arg){
 		global_sd->char_statistics[i] += sd->char_statistics[i]
 
 	/* Add the number of bytes read by this thread to the global counter. */
+	global_n_bytes_read += n_bytes_read;
 
 	/* Release (unlock) mutex. */
 	if(!pthread_mutex_unlock(&lock)){
@@ -132,7 +177,7 @@ int main(int argc, char const *argv[])
     new_action.sa_flags = SIGINT;
 
     if (0 != sigaction(SIGUSR1, &new_action, NULL)) {
-        ERROR_HANDLE("Signal handle registration failed");
+        report_error("Signal handle registration failed");
         return -1;
     }
 

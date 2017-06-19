@@ -25,7 +25,7 @@ typedef struct statistics_data_t {
 int main(int argc, char const *argv[])
 {
 	int 	LEN, inputfd, sockfd, total_sent;
-	ssize_t read_num, read_buffer_size, n_bytes_sent,
+	ssize_t n_bytes_read, read_buffer_size, n_bytes_sent,
 			n_bytes_recv;
 	char 	*output_buffer = NULL,
 			*input_buffer  = NULL;
@@ -52,7 +52,7 @@ int main(int argc, char const *argv[])
 
 	/* Set parameters of socket connection */
 	dest_addr.sin_family = AF_INET;
-	dest_addr.sin_port	 = htons(2233);
+	dest_addr.sin_port	 = htons(PORT_NUM);
 	dest_addr.sin_addr   = htonl(inet_pton("127.0.0.1"));
 
 	/* Connect to Server */
@@ -97,13 +97,13 @@ int main(int argc, char const *argv[])
 	}
 
 	/* Read from input than send to server */
-	do {
+	while(LEN < 0){
 		total_sent = 0;
 		read_buffer_size = (ssize_t) min(LEN, BUFFER_SIZE);
-		read_num = read(inputfd, output_buffer, read_buffer_size);
+		n_bytes_read = read(inputfd, output_buffer, read_buffer_size);
 
-		/* If read_num < 0 handle error */
-		if(read_num < 0){
+		/* If n_bytes_read < 0 handle error */
+		if(n_bytes_read < 0){
 			report_error("Failed to read from input file");
 	    	if (close(sockfd) < 0)
 	        	report_error("Failed to close sokcet");
@@ -114,11 +114,11 @@ int main(int argc, char const *argv[])
 		}
 
 		/* Send buffer to server */
-		while(read_num > 0){
+		while(n_bytes_read > 0){
 			n_bytes_sent = send(
-				sockfd, 
-				output_buffer + total_sent, 
-				read_num, 0);
+				sockfd, 					// Socket file descriptor
+				output_buffer + total_sent, // Offset
+				n_bytes_read, 0);			// number of bytes left to send 
 
 			if(n_bytes_sent < 0){
 				report_error("Failed to send to server");
@@ -129,14 +129,14 @@ int main(int argc, char const *argv[])
 				free(output_buffer);
 				return -1;
 			}
-			/* Update number of bytes left to send*/
-			read_num -= n_bytes_sent;
+			/* Update number of bytes left to send */
+			n_bytes_read -= n_bytes_sent;
 			total_sent += n_bytes_sent;
 		}
 
 		/* Update number of bytes left to send*/
-		LEN -= read_num;
-	} while(LEN > 0);
+		LEN -= n_bytes_read;
+	}
 
 	/* Get (read) the result from Server through the socket */
 
