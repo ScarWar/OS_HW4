@@ -11,7 +11,7 @@
 #include <pthread.h>
 #include <signal.h>
 
-#define report_error(str) printf("LINE: %d, Error - %s %s\n", __LINE__, (str), strerror(errno))
+#define report_error(str) printf("LINE: %d, Error - %s, %s\n", __LINE__, (str), strerror(errno))
 #define BUFFER_SIZE 2048
 #define NUM_OF_PRINTABLE_CHAR 95
 #define PORT_NUM 2233
@@ -204,10 +204,15 @@ int main(int argc, char const *argv[]) {
     serv_addr.sin_port = htons(PORT_NUM);
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    if (bind(listenfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)))
+    if (bind(listenfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr))) {
         report_error("Failed to bind to socket");
-    if (listen(listenfd, NUM_THREADS))
+        return -1;
+    }
+    if (listen(listenfd, NUM_THREADS)) {
         report_error("Failed to listen to socket");
+        return -1;
+    }
+
 
     /* Create and initialize statistics global data structure (GLOB STATS).*/
     global_sd = (StatisticsData *) malloc(sizeof(StatisticsData));
@@ -216,7 +221,7 @@ int main(int argc, char const *argv[]) {
     global_n_bytes_read = 0;
 
     /* Create and initialize data mutex.*/
-    if (!pthread_mutex_init(&lock, NULL)) {
+    if (pthread_mutex_init(&lock, NULL)) {
         report_error("Failed to initialize mutex");
         free(global_sd);
         return -1;
@@ -226,7 +231,7 @@ int main(int argc, char const *argv[]) {
     n_of_thread = 0;
     exit_flag = 0;
     while (1) {
-        connfd = accept(listenfd, (struct sockaddr *) &cli_addr, &addrsize);
+        connfd = accept(listenfd, NULL, &addrsize);
         if (connfd < 0) {
             report_error("Failed to accept socket");
             pthread_mutex_destroy(&lock);
@@ -235,10 +240,10 @@ int main(int argc, char const *argv[]) {
         }
 
         /* Upon connection accepted - start a Client Processor threads, continue listening. */
-        if (!pthread_create(&thread[n_of_thread++],
-                            NULL,
-                            start_client_thread,
-                            (void *) connfd)) {
+        if (pthread_create(&thread[n_of_thread++],
+                           NULL,
+                           start_client_thread,
+                           (void *) &connfd)) {
             report_error("Failed to create threads");
             free(global_sd);
             pthread_mutex_destroy(&lock);

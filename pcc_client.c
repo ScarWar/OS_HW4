@@ -11,16 +11,12 @@
 #include <pthread.h>
 
 
-#define report_error(str) printf("LINE: %d, Error - %s %s\n", __LINE__, (str), strerror(errno))
+#define report_error(str) printf("LINE: %d, Error - %s, %s\n", __LINE__, (str), strerror(errno))
 #define DEFAULT_SOURCE "/dev/urandom"
 #define BUFFER_SIZE 2048
 #define NUM_OF_PRINTABLE_CHAR 95
 #define PORT_NUM 2233
 #define min(s, t) ((s) < (t) ? (s) : (t))
-
-typedef struct statistics_data_t {
-    long long char_statistics[NUM_OF_PRINTABLE_CHAR];
-} StatisticsData;
 
 
 int main(int argc, char const *argv[]) {
@@ -28,19 +24,18 @@ int main(int argc, char const *argv[]) {
     long LEN;
     ssize_t n_bytes_read, read_buffer_size, n_bytes_sent,
             n_bytes_recv;
-    char *output_buffer = NULL,
-            *input_buffer = NULL;
+    char *output_buffer = NULL, *input_buffer = NULL;
 
     struct sockaddr_in dest_addr = {0};
 
     if (argc != 2) {
-        printf("[Error] - %s\n", "Invalide number of arguments, expected 2");
+        printf("LINE: %d, Error - Invalid number of arguments, expected 2\n", __LINE__);
         return -1;
     }
 
     /* Read the length (in bytes) of the stream to process */
-    LEN = strtol(argv[2], NULL, 10);
-    if (ERANGE != errno) {
+    LEN = strtol(argv[1], NULL, 10);
+    if (ERANGE == errno) {
         report_error("Unable to convert string to integer");
         return -1;
     }
@@ -100,7 +95,7 @@ int main(int argc, char const *argv[]) {
     /* Read from input than send to server */
     while (LEN < 0) {
         total_sent = 0;
-        read_buffer_size = (ssize_t) min(LEN, BUFFER_SIZE);
+        read_buffer_size = (ssize_t)min(LEN, BUFFER_SIZE);
         n_bytes_read = read(inputfd, output_buffer, (size_t) read_buffer_size);
 
         /* If n_bytes_read < 0 handle error */
@@ -137,35 +132,35 @@ int main(int argc, char const *argv[]) {
             /* Update number of bytes left to send*/
             LEN -= n_bytes_read;
         }
-
-        /* Get (read) the result from Server through the socket */
-        ssize_t total_read = 0;
-        int printable_bytes = 0;
-        while (total_read < sizeof(int)) {
-            n_bytes_recv = recv(sockfd, &printable_bytes + total_sent, sizeof(int) - total_sent, 0);
-            if (n_bytes_recv < 0) {
-                report_error("Failed to read from client");
-                return -1;
-            }
-            total_read += n_bytes_recv;
-        }
-
-        /* Print the result */
-        printf("The number of printable bytes is %d", printable_bytes);
-
-        /* Close descriptors */
-        if (close(inputfd) < 0) {
-            report_error("Failed to close input file");
-            return -1;
-        }
-
-        /* Close socket*/
-        if (close(sockfd) < 0) {
-            report_error("Failed to close socket");
-            return -1;
-        }
-
-        /* Quit */
-        return 0;
     }
+
+    /* Get (read) the result from Server through the socket */
+    ssize_t total_read = 0;
+    int printable_bytes = 0;
+    while (total_read < sizeof(int)) {
+        n_bytes_recv = recv(sockfd, &printable_bytes + total_sent, sizeof(int) - total_sent, 0);
+        if (n_bytes_recv < 0) {
+            report_error("Failed to read from client");
+            return -1;
+        }
+        total_read += n_bytes_recv;
+    }
+
+    /* Print the result */
+    printf("The number of printable bytes is %d", printable_bytes);
+
+    /* Close descriptors */
+    if (close(inputfd) < 0) {
+        report_error("Failed to close input file");
+        return -1;
+    }
+
+    /* Close socket*/
+    if (close(sockfd) < 0) {
+        report_error("Failed to close socket");
+        return -1;
+    }
+
+    /* Quit */
+    return 0;
 }
