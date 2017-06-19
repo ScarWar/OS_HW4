@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <pthread.h>
 
 
 #define report_error(str) printf("LINE: %d, Error - %s %s\n", __LINE__, (str), strerror(errno))
@@ -132,28 +133,39 @@ int main(int argc, char const *argv[]) {
             /* Update number of bytes left to send */
             n_bytes_read -= n_bytes_sent;
             total_sent += n_bytes_sent;
+
+            /* Update number of bytes left to send*/
+            LEN -= n_bytes_read;
         }
 
-        /* Update number of bytes left to send*/
-        LEN -= n_bytes_read;
+        /* Get (read) the result from Server through the socket */
+        ssize_t total_read = 0;
+        int printable_bytes = 0;
+        while (total_read < sizeof(int)) {
+            n_bytes_recv = recv(sockfd, &printable_bytes + total_sent, sizeof(int) - total_sent, 0);
+            if (n_bytes_recv < 0) {
+                report_error("Failed to read from client");
+                return -1;
+            }
+            total_read += n_bytes_recv;
+        }
+
+        /* Print the result */
+        printf("The number of printable bytes is %d", printable_bytes);
+
+        /* Close descriptors */
+        if (close(inputfd) < 0) {
+            report_error("Failed to close input file");
+            return -1;
+        }
+
+        /* Close socket*/
+        if (close(sockfd) < 0) {
+            report_error("Failed to close socket");
+            return -1;
+        }
+
+        /* Quit */
+        return 0;
     }
-
-    /* Get (read) the result from Server through the socket */
-
-    /* Print the result */
-
-    /* Close descriptors */
-    if (close(inputfd) < 0) {
-        report_error("Failed to close input file");
-        return -1;
-    }
-
-    /* Close socket*/
-    if (close(sockfd) < 0) {
-        report_error("Failed to close socket");
-        return -1;
-    }
-
-    /* Quit */
-    return 0;
 }
